@@ -11,13 +11,13 @@ To determine the effectiveness of General Mills’ in-store promotion and advert
 
 We found that even though advertisements and promotion programs influence the number of good units per sale, they do not have effects on revenue per sale. The number of cereal units sold per sale varies with promotions, regardless of whether there is an advertisement on that product or not. People buy more cereal units per transaction when there is a discount of over five percent. Similarly, big advertisements slightly enhance the number of units sold per transaction. However, advertisements do not improve revenue.
 
-![Figure 1](Cereal-Sales-Analysis/promo-ad-interaction.png)
+![promo-ad-interaction](https://user-images.githubusercontent.com/45189309/53053118-5d148080-3455-11e9-87bf-3410c62e24bc.png)
 
 With promotions, General Mills only encourage people to buy more, but the company is not gaining money on these discounted sales more than not offering discounts. We would suggest you to only discount under circumstances that you need to get products sold as soon as possible, such as in cases of near-expiration-date products, storage problems, or releasing upgraded products.
 
 To understand which kind of cereal that makes you lose money on discount, we conducted an analysis on different flavors that General Mills offers. General Mills are having a good strategy by not focusing on Regular flavor because this is Kellogg’s competitive product of the market. We can see that General Mills is focusing on the Toasted flavor, which brings in about fifty-two percent of General Mills revenue. You also are running most advertisements and promotion programs on this product. About forty-two to forty-three percent of the time, Toasted flavor cereal is sold with advertisement or promotion.
 
-![Figure 2](Cereal-Sales-Analysis/flavor.png)
+![flavor](https://user-images.githubusercontent.com/45189309/53053154-79182200-3455-11e9-8315-1afdfbe8115e.png)
 
 Cocoa and Cinnamon Toast are the only flavors that bring more revenue when there is a promotion. Regular and Toasted flavors generate no more revenue under promotion program than without it. Since Toasted flavor’s revenue is already the highest without any promotion, we would suggest General Mills reduce or stop the promotion program on this product. Meanwhile, Cocoa and Cinnamon Toast flavor still benefits from promotion program to improve revenue. Therefore, General Mills can continue having future discount programs on these two flavors to promote sales and revenue.
 
