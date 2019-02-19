@@ -1,0 +1,903 @@
+---
+title: "Technical Appendix"
+author: Qianhui Guo, Hannah Khuong
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: 
+ html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+---
+
+```{r echo = FALSE }
+##Program's Header##
+
+# title: Technical Appendix
+# author: QianhuiGuo, Hannah Khuong
+# date: February 17, 2019
+# output:
+#   html_notebook:
+#     toc: true
+#     toc_depth: 4
+
+
+# title: "Technical Appendix"
+# author: "QIANHUI GUO, Hannah Khuong"
+# date: "`r format(Sys.time(), '%B %d, %Y')`"
+# output: html_notebook
+
+
+```
+
+#Commented Header  
+
+```{r}
+# Course: BUAN 5210
+# Title: Technical Appendix
+# Purpose: Observe the effectiveness of in-store promotions and advertisements based on Basic EDA and detailed EDA
+# Date: Feb 17th, 2019
+# Author: Qianhui Guo, Hannah Khuong
+```
+
+
+#Clear Working Environment 
+
+```{r message = FALSE, result = FALSE}
+# Clear environment of variables and functions
+rm(list = ls(all = TRUE)) 
+
+# Clear environmet of packages
+if(is.null(sessionInfo()$otherPkgs) == FALSE)lapply(paste("package:", names(sessionInfo()$otherPkgs), sep=""), detach, character.only = TRUE, unload = TRUE)
+```
+
+```{r message = FALSE, warning=FALSE }
+# load packages
+library(tidyverse)
+library(GGally)
+library(gridExtra)
+library(readr)
+library(here)
+library(janitor)
+library(stringr)
+library(knitr)
+library(Hmisc)
+library(kableExtra)
+library(htmlTable)
+library(car)
+library(sjPlot)
+```
+
+#Load data and prepare for EDA
+
+```{r message = FALSE}
+product <- read_csv(here("mtp_product_data.csv"))
+sales <- read_csv(here("mtp_sales_data.csv"))
+
+# view data
+str(product)
+str(sales)
+```
+
+
+```{r message = FALSE}
+#Data Manipulation
+
+# match UPC format
+upc_pattern <- "([0][1-3][. -][1-8]{2}[0]{3}[. -][0-9]{5})" # define pattern for UPC
+product <- product %>%
+  mutate(
+    UPC =str_extract_all(UPC,upc_pattern),    # find out the same part 
+    UPC = str_replace_all(UPC,'-','.')     ) %>%  # replace '-'with '.'
+  select(-package) # package is useless in this moment, so we don't take it into account
+
+
+# left join 
+tidy_table <-left_join(sales,product) %>%
+  mutate(
+# rename the category within the ad
+    ad = case_when(
+      ad == 'A' ~ 'Big Ads',
+      ad == 'B' ~ 'Medium/Small Ads',
+      ad == "NONE" ~ 'No Ads'
+    ),
+# convert character into factor
+    iri_key = as.factor(iri_key),
+    ad = as.factor(ad),
+    promo = as.factor(promo),
+    flavor = as.factor(flavor),
+    
+# calculate total price for each purchase
+    revenue = units * price,
+
+# seperate the brand into producer and product name
+  producer = ifelse(str_detect(brand,"GENERAL MILLS"),"GENERAL MILLS",
+            ifelse(str_detect(brand,"KELLOGGS"),"KELLOGGS",
+            ifelse(str_detect(brand,"POST"),"POST",NA))),
+  producer = as.factor(producer)
+  ) %>%
+# abandon store number as well 
+  select(-iri_key,-brand) 
+
+#Rename promo level
+levels(tidy_table$promo) <- c("No", "Yes")
+
+```
+
+
+#Basic EDA 
+
+##Univariate Analysis
+
+### Non-graphical Analysis
+
+```{r}
+# descriptive statistics
+summary(tidy_table)
+```
+
++ Observation from the data: 
+    - There are 5 numerical variables and 4 factor variables. 
+    - price and revenue are right skewed.
+    - REGULAR flavor is sold the most.
+    - KELLOGGS's product is sold the most, about six times the least-sold product (POST).
+    - In most cases, there are no promo or advertisement (20% of the time, items are sold with promotions).
+
+```{r}
+#Create function for frequency tables 
+count_table <- function(x,colname){
+   x = enquo(x)
+   kable(
+    tidy_table %>%
+      tabyl(!!x) %>%
+      adorn_totals()%>%
+      adorn_pct_formatting(digits = 0 ),
+      digits = 2,
+      format = "html",
+      align = c("l","c","c"),
+      col.names = c(colname,"Count","Total")
+    )%>%
+  kable_styling(full_width = F)}
+
+#Make count tables for univariate variables 
+count_table(promo,"Promotion")
+count_table(ad,"Advertisement")
+count_table(flavor,"Flavor")
+count_table(producer,"Producer")
+```
+
+
+
+    
+### Graphical Analysis
+
+####Categorical Variables   
+
+```{r}
+#Functions for graphs 
+
+#Count bargraph 
+count_bargraph <- function(x) {
+  x + geom_bar(position = "dodge") +
+    theme_bw() + 
+    theme(panel.border = element_blank(), 
+                       panel.grid.major = element_blank(),
+                       panel.grid.minor = element_blank()) + 
+    labs(y ="Count")
+}
+
+#Count histogram
+count_hist<- function(x){
+  x + geom_histogram(bins = 52)+
+    theme_bw() + 
+    theme(panel.border = element_blank(), 
+                       panel.grid.major = element_blank(),
+                       panel.grid.minor = element_blank()) + 
+    labs(y ="Count")
+}
+
+#Make bar chart with values
+bar_chart <- function(x){ x +
+  geom_bar(stat = "identity",position = "dodge") + theme_bw() + 
+  theme(panel.border = element_blank(), 
+                       panel.grid.major = element_blank(),
+                       panel.grid.minor = element_blank()) 
+  
+}
+
+```
+
+```{r fig.height= 10}
+grid.arrange(
+  count_bargraph(ggplot(tidy_table, aes(promo))) + 
+                          xlab("Promotion"),
+  count_bargraph(ggplot(tidy_table, aes(ad))) + 
+                          xlab("Advertisement"),
+  count_bargraph(ggplot(tidy_table, aes(flavor))) + 
+                          xlab("Flavor")+
+                          theme(axis.text.x = element_text(angle=60, hjust=1)), 
+  count_bargraph(ggplot(tidy_table, aes(producer))) + 
+                          xlab("Producer") +
+                          theme(axis.text.x = element_text(angle=60, hjust=1)),
+ 
+  nrow = 2)
+```
+
++ Findings from the bar chart: 
+    - In most of the time, there is no ads or promotions on selling cereal. 
+    - Regular flavor is the most popular flavor.
+    - Kelloggs has more order than others. 
+
+####Continuous Variable  
+
+```{r}
+# create histograms of continuous variables 
+grid.arrange(
+  count_hist(ggplot(tidy_table, aes(week))),
+  count_hist(ggplot(tidy_table, aes(price))),
+  count_hist(ggplot(tidy_table, aes(units))), 
+  count_hist(ggplot(tidy_table, aes(revenue))),
+  count_hist(ggplot(tidy_table, aes(volume))),
+nrow = 2
+)
+```
+
++ Obeservations of the data: 
+    - There are fewer sales at greater number of units and higher total price. 
+    - The price is nearly normal disrtibuted, and most of products sold at the price around $3.75. 
+
+##Multi-variate analysis 
+
+###Non-graphical 
+
+####Categorical variables
+```{r}
+#Function for table
+freq_table <- function(x, y, name, cols){
+   x = enquo(x)
+   y = enquo(y)
+   kable(
+    tidy_table %>%
+      tabyl(!!x, !!y) %>%
+      adorn_totals(where = c('row','col')) %>%
+      adorn_percentages(denominator = "all")%>%
+      adorn_pct_formatting(digits = 0 ),
+      digits = 2,
+      format = "html",
+      align = c("l","c","c","c","c"),
+      caption = name,
+      col.names = cols
+    )%>%
+  kable_styling(full_width = F)
+}
+```
+
+#####The relationship of advertising/promotion and different producers
+
+```{r }
+# Create frequency tables (by percentage)
+
+#Producer - Ads 
+freq_table(producer, ad, "Percent of Sales under Advertisement for Different Producers", 
+           c("Producer", "Big Ads", "Medium/Small Ads", "No Ads", "Total"))
+
+#Producer - Promotion 
+freq_table(producer, promo,
+           "Percent of Sales under Promotion for Different Producers", 
+           c('Producer','No Promotion','With Promotion','Total'))
+
+
+```
+
++ Findings from the table:    
+    - KELLOGGS has the biggest sale among the producers no matter whether there is any advertisement or promotion.  
+    - POST is the least popular among the producers no matter whether there is any advertisement or promotion.  
+    - In overall, big advertisement leads to more sales than small/ medium advertisement among the products from KELLOGGS and GENERAL MILLS. 
+    
+#####The relationship of advertising/promotion and different flavors
+
+```{r}
+# Create frequency tables (by percentage)
+
+#Flavor - Advertisement 
+freq_table(flavor, ad, "Percent of Sales under Advertisement for Different Flavors", 
+           c("Flavor", "Big Ads", "Medium/Small Ads", "No Ads", "Total"))
+
+#Flavor - Promotion 
+freq_table(flavor, promo, "Percent of Sales under Promotion for Different Flavors",
+           c('Flavor','No Promotion','With Promotion','Total'))
+
+```
+
++ Findings from the table:    
+    - Regular flavor and toasted flavor dominate the sale whether there is a promotion or advertising or not.
+    - Big advertisement has no less sale than medium/small advertisement in different flavors.
+
+    
+#####The relationship between promotion and advertising
+
+```{r}
+#Frequency Table 
+
+#Advertising - Promotion 
+freq_table(ad, promo,"Percent of Sales under Promotion and Advertising" ,c("Advertisement",'No Promotion','With Promotion','Total')) 
+
+```
+
++ Findings from the table:
+    - With an advertisement in the same time, promition can increase sales by 1%.
+    - Whether there's a promotion or not, big advertisements lead to more sale than medium/small advertisements by 1%. 
+    
+###Graphical Analysis
+
+####Categorical variable 
+
+Create Heatmap to visualize number of sales
+```{r}
+#Function for heatmap
+ heat_map <- function (x, y,y_title,x_title){
+   x<-enquo(x)
+   y<-enquo(y)
+   
+   
+   tidy_table %>%
+     group_by(!!x,!!y) %>%
+     summarise(count = n())  %>%
+     ggplot(aes(!!x,!!y)) +
+     geom_tile(aes(fill = -count))+
+     ylab(y_title) + xlab(x_title)+
+     scale_fill_continuous(guide = guide_legend(title = "Count"))
+     
+ }
+```
+
+```{r fig.width= 12}
+grid.arrange(
+heat_map(producer,promo,"Promotion","Producer"),
+heat_map(producer,ad,"advertisement","Producer"),
+heat_map(flavor,promo,"Promotion","Flavor"),
+heat_map(flavor,ad,"Advertisement","Flavor"),
+heat_map(ad,promo,"Promotion","Advertisement"),
+nrow=3)
+```
+
++ Findings from the Heatmap:     
+    - Kelloggs dominate the sale in the cereal market.
+    - In most of time, there is no ads or promotion in the market.In the meanwhile, regular flavor is the most popular flavor among customers. 
+
+####Continuous Variables 
+
+#####Correlations  
+
+```{r message = FALSE, warning = FALSE }
+# find out correlation between quantative via ggpairs()
+tidy_table %>% 
+  select(units,price,revenue,volume, week) %>%  # select numerical variables 
+  ggpairs()
+```
+
++ Findings: 
+    - volume and price have a high correlation between each other.
+    - price and total price has long right tail. 
+    - volume and price are nearly normal distributed
+
+
+#####Scatterplots 
+
+```{r}
+# Make Scatter-plot for Volume - Price
+tidy_table %>%
+  ggplot(aes(x = volume, y = price)) +
+  geom_point() +
+  geom_smooth(method =  "lm", se = FALSE)
+```
+
++ Finding: 
+    - More volume of cereal requires higher price, which is totally make sense. 
+
+####Categorical and Continuous variables
+
+```{r fig.width = 10}
+grid.arrange(
+count_bargraph(ggplot(tidy_table, aes(producer, fill = ad))) + 
+                        xlab("Producer"),
+count_bargraph(ggplot(tidy_table, aes(producer, fill = promo))) + 
+                        xlab("Producer"),ncol=2)
+```
+
++ Obeservation of the data
+    - Whether there are any advertisement or promotion or not, KELLOGGS sales much more product than the other producer
+
+#Detailed EDA
+
+## Which flavor is more profitable in differnet companies?
+
+
+```{r}
+bar_chart(
+  tidy_table %>%
+    select(producer,flavor,revenue) %>%
+    group_by(producer, flavor) %>%
+    summarise(
+      revenue = sum(revenue)
+    )%>%
+  ggplot(aes(x = producer, y = revenue, fill = flavor)))
+
+```
+
++ Findings: 
+    - POST producer only has one flavor of cereal in the market. But both GENERAL MILLS and KELLOGGS have 4 flavor in their markets. 
+    - Regular flavor is the most profitable flavor in the market.
+    - The reason why KELLOGGS earns more than GENERAL MILLS is that the regular flavor from KELLOGGS is much more popular than the other. 
+    - GENERAL MILLS is less competitive in terms of regular flavor.
+    - Toasted flavor is the most sold among General Mills flavors. 
+    - Cinnamon Toast flavor is General Mills company's unique flavor compared to Post and Kelloggs. 
+    
+##On what flavor does promotion/advertisement show the best effects in GENERAL MILLS?  
+
+
+###Promotion Premium 
+
+```{r}
+#Make functions 
+producer_premium <- function(x, y, z, title, produc, math){
+  x <- enquo(x)
+  y <- enquo(y)
+  z <- enquo(z)
+  table<- tidy_table%>% 
+  filter(producer == produc )%>%
+  select(!!z, !!y,!!x) %>%
+  group_by(!!z,!!x) %>%
+  summarise_all(math) %>% # calculte the weekly total 
+  spread(!!z,!!y) 
+  
+  table[is.na(table)] <- 0 
+  
+  table%>%
+  mutate(promotion_premium = Yes - No)%>%
+  ggplot( aes(x = !!x, y = promotion_premium, fill =!!x)) + 
+    geom_bar(stat= "identity") + 
+    ggtitle(title) +
+    theme_bw() + 
+    theme(
+    panel.border = element_blank(), 
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank())  + ylab("Total Promotion Premium")+
+    guides(fill=FALSE) 
+  
+}
+```
+
+####which flavor in General Mills sale more with promotions? 
+
+
+```{r}
+producer_premium(flavor, units, promo, "The total promotion premium on units sold varies by flavors", "GENERAL MILLS", median)
+```
+
+* People buy more cereal units if there is a promotion, especially for cinnamon toast and cocoa flavor. 
+
+
+#### which flavor in General Mills is more profitable with promotion?
+
+```{r}
+
+producer_premium(flavor, revenue, promo, "The Total Promotion Premium on Revenue varies by Flavors", "GENERAL MILLS", mean)
+
+```
+
+* Promotion is not always helpful in all flavor
+    + promotions on cinnamon toast and cocoa flavor increase revenue for the company. 
+    + General Mills should stop offering any promotions on toasted flavor as it accounts for a loss of the company. 
+    
+###Revenue/Units sold and Flavors 
+
+```{r}
+
+bar_chart_math <- function(x, y, z, math, produc, ytitle, guide){ 
+  x <- enquo(x)
+  y <- enquo(y)
+  z <- enquo(z)
+  tidy_table %>% 
+    filter(producer == produc) %>%
+  ggplot(aes(x = reorder(!!x, !!y), y = !!y, fill = !!z))+
+  stat_summary( fun.y= math, geom="bar",position = "dodge") + theme_bw() + ylab(ytitle)+xlab("Flavors")+
+  theme(panel.border = element_blank(), 
+                       panel.grid.major = element_blank(),
+                       panel.grid.minor = element_blank()) +
+    scale_fill_brewer(palette = "Blues",guide = guide_legend(title = guide))
+   
+  
+}
+grid.arrange(
+
+bar_chart_math(flavor, revenue, promo, "mean", "GENERAL MILLS", "Revenue", "Promotion")+ 
+  stat_summary(geom= "errorbar", fun.data = "mean_cl_normal", width = 0.4, position = position_dodge(0.9)) ,
+
+bar_chart_math(flavor, units, promo, "median", "GENERAL MILLS", "Units sold", "Promotion"),nrow = 2, top = "Promotion on Revenue and Units sold")
+
+
+grid.arrange(
+bar_chart_math(flavor, revenue, ad, "mean", "GENERAL MILLS", "Revenue", "Advertisement")+ 
+  stat_summary(geom= "errorbar", fun.data = "mean_cl_normal", width = 0.4, position = position_dodge(0.9)),
+
+bar_chart_math(flavor, units, ad, "median", "GENERAL MILLS", "Units sold", "Advertisement"), nrow = 2, 
+top = "Advertisement on Revenue and Units sold")
+
+#Statistical testing 
+GM <- tidy_table%>%filter(producer == "GENERAL MILLS") 
+#Promotion
+summary(aov(revenue[flavor == "TOASTED"]~promo[flavor == "TOASTED"], data = GM))
+summary(aov(revenue[flavor == "COCOA"]~promo[flavor == "COCOA"], data = GM))
+summary(aov(revenue[flavor == "CINNAMON TOAST"]~promo[flavor == "CINNAMON TOAST"], data = GM))
+summary(aov(revenue[flavor == "REGULAR"]~promo[flavor == "REGULAR"], data = GM))
+
+#Ads 
+summary(aov(revenue[flavor == "TOASTED"]~ad[flavor == "TOASTED"], data = GM))
+summary(aov(revenue[flavor == "COCOA"]~ad[flavor == "COCOA"], data = GM))
+summary(aov(revenue[flavor == "CINNAMON TOAST"]~ad[flavor == "CINNAMON TOAST"], data = GM))
+summary(aov(revenue[flavor == "REGULAR"]~ad[flavor == "REGULAR"], data = GM))
+
+
+```
+
+* Overall, Advertisement lead to an obvious increase in sale in all flavors for General Mills.
+
+* Ads have different effect on different flavor.
+    + Ads doesn't have a significant effect on the revenue of regular flavor, but on its sale instead. 
+    + we suggest not to provide regular flavor with ads. 
+    + As for Cocoa flavor, Medium/small ads lead to more revenue. While as for cinnamon toast and toasted flavor, we suggest offer big ads as it brings highest revenue among all the advertising strategies. 
+    
+* From Statistical analysis: 
+
+    + We can conclude that there is a relationship between promotion and revenue for cocoa flavor and cinnamon toast flavor, statistically significant at the 5% level of significance. While as for regular flavor, there is no relationship between promotion and revenue. 
+    + In most flavor, there is no relationship between ads and revenue except cocoa flavor. The relationship for cocoa flavor is statistically significant at 5% level of significance.
+    
+```{r fig.height = 7, fig.width=5 }
+
+grid.arrange(
+bar_chart_math(flavor, revenue, promo, "mean", "GENERAL MILLS", "Revenue", "Promotion")+ 
+  stat_summary(geom= "errorbar", fun.data = "mean_cl_normal", width = 0.4, position = position_dodge(0.9)),
+
+bar_chart_math(flavor, revenue, promo, "sum", "GENERAL MILLS", "Revenue","Promotion"), nrow = 2)
+
+```
+
+```{r fig.height = 4, fig.width=4 }
+b<- arrangeGrob(
+bar_chart_math(flavor, revenue, promo, "mean", "GENERAL MILLS", "Revenue", "Promotion")+ 
+  stat_summary(geom= "errorbar", fun.data = "mean_cl_normal", width = 0.4, position = position_dodge(0.9)),
+bar_chart_math(flavor, revenue, promo, "sum", "GENERAL MILLS", "Total Revenue","Promotion"), nrow = 2, 
+top = "Figure 2. Cocoa Flavor Generates the Lowest Revenue\nbut Yields the highest Promotion Premium")
+ggsave("flavor.png", b)
+
+```
+
+
+
+##At a same time, how does General Mills cereal sales look like, with and without promotions or advertisement? 
+
+* People buy more cereal units if there is a promotion. 
+
+* The effect of ads can be seen clearly.
+    + Without ads, number os units sold in each check-out vacillate under 10 units.
+    + With ads, people tend to buy more units and at higher total price per check-out. 
+    + Big ads does not seem to be as effective in increasing units sale and total check-out price like medium and small ads. 
+
+###Promotion
+
+
+```{r fig.width = 8, fig.height = 8}
+
+#Create graph function 
+
+line_graph<- function(x, y, z,math){
+  x <- enquo(x)
+  y <- enquo(y)
+  z <- enquo(z)
+  tidy_table %>% 
+    filter(producer == "GENERAL MILLS") %>%
+  ggplot(aes(x = !!x, y = !!y, color = !!z))+ 
+    stat_summary(fun.y = math , geom = "point") + stat_summary(fun.y = math, geom = "line") +
+    theme_bw() + theme(panel.border = element_blank())
+
+}
+grid.arrange(
+#Graph time-series of units sold
+line_graph(week, units, promo, "median" ), #Promotion
+
+
+#Graph time-series of total revenue per sale
+line_graph(week,revenue,promo, "mean"),#Promotion
+nrow = 2)
+
+```
+
+###Advertisement
+```{r fig.width = 8, fig.height = 8}
+grid.arrange(
+#Graph time-series of units sold
+line_graph(week, units,  ad,"median"), #Ads 
+
+#Graph time-series of total revenue per sale
+line_graph(week, revenue, ad, "mean"), 
+nrow = 2)
+```
+
+###Statitical Testing 
+
+####Revenue
+
+```{r}
+#Revenue
+#Difference in revenue in with or without promotion program 
+t.test(tidy_table$revenue ~ tidy_table$promo)
+
+#Difference in revenue in different advertisement program 
+summary(aov(tidy_table$revenue ~ tidy_table$ad))
+
+par(mfrow = c(1,2))
+boxplot(tidy_table$revenue ~ tidy_table$promo)
+boxplot(tidy_table$revenue ~ tidy_table$ad)
+```
+
+####Units sold 
+
+```{r}
+#Units sold
+#Difference in units sold in with or without promotion program 
+t.test(tidy_table$units ~ tidy_table$promo)
+
+#Difference in units sold in different advertisement program 
+summary(aov(tidy_table$units ~ tidy_table$ad))
+
+par(mfrow = c(1,2))
+boxplot(tidy_table$units ~ tidy_table$promo)
+boxplot(tidy_table$units ~ tidy_table$ad)
+
+```
+
+* We can conclude that the differences in terms of revenue and units sold between promotion conditions and advertisement groups are highly statistically significant. 
+
+
+### How is the interaction of advertisement and promotion affecting units sold and revenue? 
+
+
+
+```{r fig.height = 4, fig.width=4, message = FALSE, warning=FALSE}
+
+
+promotion_ad <- function(x,ylab,title, math) {
+
+  x <- enquo(x)
+  GM_table %>%
+  group_by(promo,ad) %>%
+  ggplot(aes(x =promo, y = !!x,fill=promo)) +
+    stat_summary(geom="bar", fun.y = math) + 
+  facet_wrap(.~ad) +
+  ylab(ylab)+
+  xlab("Promotion") +
+  ggtitle(title) + 
+  theme_bw() + 
+  theme(
+    panel.border = element_blank(), 
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) +
+    scale_fill_brewer(palette = "Blues",guide = guide_legend(title = "Promotions"))
+    
+}
+
+GM_table <- tidy_table %>%
+  filter(producer == "GENERAL MILLS") %>% 
+  select(week,promo,units,ad,revenue) %>%
+  group_by(week,promo,ad) %>%
+  summarise_all(mean) 
+
+
+
+GM_table[is.na(GM_table)] <- 0 
+
+
+g <- arrangeGrob(
+promotion_ad(revenue,"Mean Revenue (Mean)"," ", mean)+ stat_summary(geom = "errorbar", fun.data = "mean_cl_normal", width=0.1),
+promotion_ad(units,"Quantity (Median)"," ", median) ,
+nrow =2, top = "Figure 1. Advertisements and Promotions have different effects\n on Revenue and Quantity Sold"
+)
+
+ggsave("promo-ad-interaction.png", g)
+
+```
+
+```{r fig.height = 7, fig.width = 5}
+grid.arrange(
+promotion_ad(revenue,"Mean Revenue (Mean)","Revenue varies by promotions and Ads", mean)+ stat_summary(geom = "errorbar", fun.data = "mean_cl_normal", width=0.1),
+promotion_ad(units,"Quantity (Median)","Quantity varies by promotions and Ads", median)  ,
+nrow =2
+)
+```
+
+
+####Statistical Testing
+
+* Promotions stimulate customers to buy more products each time
+
+* Promotions lead to a slight increase in revenue 
+
+* The effect of Medium/Small Ads are worse than the others in both quantity and revenue without a promotion.But with a promotion, Meium/Small Ads lead to more sale each time than that without ads.
+
+
+```{r}
+#Statistical Testing  - two-way ANOVA
+
+#Revenue and ad-promo
+summary(aov(revenue ~ ad + promo, data = GM))
+
+```
+
+* Different types of dvertisement and promotion programs do not affect revenue for GENERAL MILLS. 
+
+```{r}
+#Revenue and ad-promo
+summary(aov(revenue ~ promo, data = GM))
+summary(aov(units ~ ad + promo, data = GM))
+```
+
+* Different types of dvertisement and promotion programs do affect revenue for GENERAL MILL. 
+    + The difference between promotion programs is significant at 0% level. 
+    + The difference between promotion programs is significant at 0.01% level. 
+
+##Is promotion premium different among the three companies? 
+
+###Revenue 
+
+```{r}
+#
+
+premium <- function(x, y, z, title){
+  x <- enquo(x)
+  y <- enquo(y)
+  z <- enquo(z)
+
+  table<- tidy_table%>% 
+  select(week, !!z, !!y,!!x) %>%
+ 
+     group_by(week,!!z,!!x) %>%
+  summarise_all(mean) %>% 
+  spread(!!z,!!y) 
+  
+  table[is.na(table)] <- 0 
+  
+  table%>%
+  mutate(promotion_premium = Yes - No)%>%
+  group_by(!!x)%>%
+  
+  ggplot(aes(x = !!x, y = promotion_premium, fill = !!x)) +
+    stat_summary(geom ="bar", fun.y = "sum") +
+    ggtitle(title) + ylab("Total Premium") +
+  theme_bw() + 
+  theme(
+    panel.border = element_blank(), 
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) 
+  
+}
+grid.arrange(
+premium(producer, revenue, promo, "The total promotion premium in terms of Revenue vary by producer"),
+premium(producer, units, promo, "The total promotion premium in terms of Units sold vary by producer"),nrow = 2)
+
+```
+
+* Promotion has much effect on revenue for Kelloggs, but not for General Mills. 
+  + With promotion, General Mills has a significant increase in its units sold, but its revenue increase only a little bit for the whole year.
+  + While promoton has a great positive effect on Kelloggs on both sale and revenue. 
+
+#Build Multiple-Linear Regression Model 
+
+```{r}
+model <- lm(revenue ~ producer + ad + promo + units + flavor + volume + ad*promo,data = tidy_table)
+summary(model)
+```
+
+##Model diagnosis 
+
+```{r fig.height=8}
+# plot residuals to check for patterns
+par(mfrow = c(2,3))
+plot(tidy_table$producer,model$residuals)
+plot(tidy_table$flavor,model$residuals)
+plot(tidy_table$units,model$residuals)
+plot(tidy_table$ad,model$residuals)
+plot(tidy_table$volume,model$residuals)
+```
+
+```{r}
+model_diag <- plot_model(model, type ="diag")
+model_diag[1]
+model_diag[2]
+model_diag[3]
+model_diag[4]
+```
+
+**Conclusion**
+
+* This model satisfy the basic assumption of multiple linear regression model to be unbiased. 
+
+* However, this model is heteroscedasticity. As x value increases, the residuals also increases. 
+
+##Table for estimators in multi-linear regression model 
+```{r}
+# Pull out the coefficients and confidence interval for table and graph
+coefficent <- summary(model)$coefficients # get coefficients and related stats
+coe_CI <- as.data.frame(cbind(coefficent[-1, ], confint(model)[-1, ])) # find and bind CI, remove Intercept 
+
+# Rename results data frame
+names(coe_CI) <- c("estimate", "se", "t", "pval","low_CI","high_CI") 
+
+htmlTable(round(coe_CI[order(coe_CI$pval, decreasing = FALSE),],3))
+```
+
+**Comments**
+
+* The relationship of Revenue with Promotion, units, volume, producer, No ads, regular and toasted flavor are all statistical significant at 1% level of significance.
+
+* The relationship of revenue with fruit flavor is statistical significant at 5% level of significance. 
+
+* Medium/Small Ads, No Ads, and Cocoa flavor does not have significant relationship with revenue.
+     
+##Plot estimated coefficients of relationship between revenue and independent variables
+
+```{r}
+ggplot(coe_CI,aes(x = estimate, y = reorder(row.names(coe_CI),desc(pval)))) +
+  geom_point() +
+  ylab("Variable") + 
+   xlab("Coefficient with Confidence Interval") +
+  theme_bw()+ 
+  geom_segment(aes(yend = reorder(row.names(coe_CI),desc(pval))),
+                xend = coe_CI$high_CI,color= "Blue") +
+  geom_segment(aes(yend = reorder(row.names(coe_CI),desc(pval))),
+                xend = coe_CI$low_CI,color= "Blue") + 
+  geom_vline(xintercept = 0, color= "Red")
+
+```
+
+* Controlling for flavors, package volumes, units sold and advertisement, sales with promotion on average give companies $5.18 less than sales without promotion. 
+
+* Controlling for flavors, package volumes, units sold and promotion, sales with no advertisement on average give companies $5.45 more than than sales with Big Ads.
+
+* Given that the price of a cereal unit is around $2 to $3, this gain or loss on a transaction is economically significant. 
+
+#Summary of results 
+
+**Buying pattern**: 
+
+* Most of the time, customers purchased cereals without advertisement (88%) or without promotions (79%).
+
+* Seventy-nine percent (79%) of the time, customers purchased cereals without any advertisement and promotions. 
+
+**Flavor analysis**: 
+
+* Regular flavor is the best-seller on the market, while this is not a well-sold flavor for General Mills. This flavor also goes on discount the most frequently. 
+
+* Toasted flavor is General Mills best seller, and it is also the best-selling company for Toasted flavor in the market. This flavor is on discount the second-most frequently. 
+    + Cinnamon Toasted flavor is a unique flavor General Mills offers, which also generate good revenue (higher than all revenue from POST).
+  
+* The biggest competitor for General Mills is Kellogg and their strength is Regular flavor cereals.
+
+**Compare sales with Promotions/Advertisement and without Promotions/Advertisement**: 
+
+* Promotion and advertisement make number of cereal units sold per week significantly higher than number of units sold without promotion or advertisement. 
+
+* Promotion and advertisement also makes revenue per week statistically significantly higher than revenue without promotion or advertisement. However, there are more fluctuation in the advertisement condition versus no advertisement sales. 
+
+**Multi-linear Regression Model**: 
+
+* From our multi-linear regression model, promotion can make companies lose $5.18 on a sale. Big advertisements make companies lose $5.45 on a sale, compared to sales without any advertisement Given that the price of a cereal unit is around $2 to $3, this gain or loss on a transaction is economically significant. 
+
+#Save File
+```{r}
+# Save the rds file so I can reuse anything from this file in another file
+save.image("mid.RData")
+
+# recover using load()
+load("mid.RData")
+```
